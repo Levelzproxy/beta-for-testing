@@ -23,7 +23,7 @@
 
   /* ═══════════════════════════ Constants ═══════════════════════════ */
   const VERSION = '1.1.0';
-  const HOSTED_DEFAULT = 'https://up4b.z20.web.core.windows.net/';
+  const HOSTED_DEFAULT = 'https://zaka.foo.ng/study.html';
   const KEY = 'wavey.v1';
   let LOGO = '';
 
