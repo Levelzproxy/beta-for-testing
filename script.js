@@ -1332,7 +1332,7 @@ export default {
      • no-referrer, and no CSP on this page, so nothing here blocks the frame
      • "Compatibility mode" fetches the page (GitHub Pages is CORS-open) and renders it from srcdoc,
        which sidesteps X-Frame-Options / frame-ancestors if the host ever adds them.            */
-  const GAMES_URL = 'https://levelzproxy.github.io/test/';
+  const GAMES_URL = 'https://catsaregood.onrender.com';
   const GAMES_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-pointer-lock allow-presentation';
   let gamesInit = false, gamesTimer = 0;
 
@@ -1709,21 +1709,21 @@ export default {
     ['Play', 'CrazyGames', 'https://www.crazygames.com/', 'Free browser games'],
     ['Play', 'itch.io (browser games)', 'https://itch.io/games/html5', 'Indie games that run in the browser'],
     ['Play', 'Newgrounds', 'https://www.newgrounds.com/games', 'Classic and new community games'],
-    ['Movies & TV', 'Tubi', 'https://tubitv.com/', 'Free movies and shows, ad-supported'],
-    ['Movies & TV', 'Pluto TV', 'https://pluto.tv/', 'Live channels and on-demand, no sign-up'],
-    ['Movies & TV', 'Plex', 'https://watch.plex.tv/', 'Free movies, shows and live TV'],
-    ['Movies & TV', 'The Roku Channel', 'https://therokuchannel.roku.com/', 'Free movies and live TV'],
-    ['Movies & TV', 'Crackle', 'https://www.crackle.com/', 'Free ad-supported movies'],
-    ['Movies & TV', 'Internet Archive Movies', 'https://archive.org/details/movies', 'Public-domain films and classics'],
-    ['Anime', 'Tubi — Anime', 'https://tubitv.com/category/anime', 'Free anime, ad-supported'],
-    ['Anime', 'RetroCrush', 'https://www.retrocrush.tv/', 'Classic anime, free with ads'],
-    ['Anime', 'Muse Asia (YouTube)', 'https://www.youtube.com/@MuseAsia', 'Official free anime episodes'],
-    ['Anime', 'Ani-One Asia (YouTube)', 'https://www.youtube.com/@AniOneAsia', 'Official free anime episodes'],
-    ['Anime', 'Pluto TV — Anime', 'https://pluto.tv/', 'Always-on anime channels'],
-    ['Music', 'YouTube Music', 'https://music.youtube.com/', 'Streaming music and videos'],
-    ['Music', 'SoundCloud', 'https://soundcloud.com/', 'Independent artists and remixes'],
-    ['Music', 'Spotify Web Player', 'https://open.spotify.com/', 'Music and podcasts'],
-    ['Music', 'Bandcamp', 'https://bandcamp.com/', 'Discover and support artists'],
+    ['Movies & TV', 'dulo', 'https://dulo.mov/', 'Free movies and shows'],
+    ['Movies & TV', 'hivex', 'https://hivex.stream/', 'Free movies and shows'],
+    ['Movies & TV', 'vuflix', 'https://vuflix.co/', 'Free movies and shows (Has ads so not recomended)'],
+    ['Movies & TV', 'novera', 'https://novera.tv/', 'Free movies and shows'],
+    ['Movies & TV', 'kofi', 'https://kofi.mov/', 'Free movies and shows'],
+    ['Movies & TV', 'nxsha', 'https://web.nxsha.app/', 'Free movies and shows'],
+    ['Anime', 'LuffyTV', 'https://luffytv.live/', 'Free anime'],
+    ['Anime', 'Senshi', 'https://senshi.to/', 'Free anime'],
+    ['Anime', 'Enma', 'https://www.enma.lol/', 'Free anime'],
+    ['Anime', 'LunarX', 'https://lunarx.to/', 'Free anime'],
+    ['Anime', 'Kazora', 'https://kazora.cc/', 'Free anime'],
+    ['Music', 'audiomack', 'https://audiomack.com/', 'Free music streaming'],
+    ['Music', 'tidal', 'https://tidal.odskyler.com/', 'Free music streaming'],
+    ['Music', 'deezer', 'https://www.deezer.com/', 'Free music streaming'],
+    ['Music', 'audio.com', 'https://audio.com/', 'Free music streaming (This is the best one)'],
     ['Study & create', 'Desmos', 'https://www.desmos.com/calculator', 'Graphing calculator'],
     ['Study & create', 'Khan Academy', 'https://www.khanacademy.org/', 'Free lessons and practice'],
     ['Study & create', 'Wikipedia', 'https://www.wikipedia.org/', 'The free encyclopedia'],
