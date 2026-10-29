@@ -26,17 +26,19 @@
     { name: 'Inter & Sora',          role: 'Fonts (Google Fonts)',               url: 'https://fonts.google.com/' },
     { name: 'AllOrigins, corsproxy.io, cors.eu.org and friends', role: 'Free public relays that load pages', url: '' }
   ];
+  // Shown under the heading "Hosted proxies" in the Credits frame (same format as above).
+  const CREDITS_PROXIES = [
+    { name: 'Interstellar', role: 'Hosted proxy',  url: 'https://up4b.z20.web.core.windows.net/' },
+    { name: 'Zaka',         role: 'Hosted proxy',  url: 'https://morestuff.woodvilleweather.com/study.html' },
+    { name: 'Amethyst',     role: 'Hosted proxy',  url: 'https://amethyst.zone/browse' },
+    { name: 'Astral',       role: 'Hosted proxy',  url: 'https://storage.googleapis.com/astralubg/index.html' }
+  ];
 
-  // 3) SIGN-IN. Works out of the box with accounts stored only in the visitor's own browser.
-  //    For REAL accounts that follow people between devices, fill in ONE of these:
-  //    A) Firebase (best: email+password AND Google).  console.firebase.google.com → create project →
-  //       Build ▸ Authentication ▸ enable "Email/Password" and "Google" → Project settings ▸ "Your apps" ▸ Web (</>) →
-  //       copy the 4 values below. Then Authentication ▸ Settings ▸ Authorized domains ▸ add your website's domain.
-  //    B) Google only: console.cloud.google.com ▸ APIs & Services ▸ Credentials ▸ OAuth client ID ▸ "Web application" ▸
-  //       add your website under "Authorized JavaScript origins" ▸ paste the Client ID into googleClientId.
+  // 3) SIGN-IN. Works out of the box (nothing to set up): email + password accounts are saved in the visitor's own browser,
+  //    and they can save / restore a backup file in Settings ▸ Account to move them to another device.
+  //    OPTIONAL (leave empty if you don't want it): Firebase accounts that follow people between devices.
   const AUTH = {
-    firebase: { apiKey: '', authDomain: '', projectId: '', appId: '' },
-    googleClientId: ''
+    firebase: { apiKey: '', authDomain: '', projectId: '', appId: '' }
   };
 
   // 4) "USERS ONLINE" counter near the top of the page.
@@ -72,6 +74,13 @@
 
   /* ═══════════════════════════ Constants ═══════════════════════════ */
   const HOSTED_DEFAULT = 'https://up4b.z20.web.core.windows.net/';
+  // The choices shown as buttons whenever a page is opened with a hosted proxy.
+  const HOSTED_PROXIES = [
+    { name: 'Interstellar', url: HOSTED_DEFAULT },
+    { name: 'Zaka',         url: 'https://morestuff.woodvilleweather.com/study.html' },
+    { name: 'Amethyst',     url: 'https://amethyst.zone/browse' },
+    { name: 'Astral',       url: 'https://storage.googleapis.com/astralubg/index.html' }
+  ];
   const KEY = 'wavey.v1';
   let LOGO = '';
 
@@ -97,6 +106,7 @@
     { id: 'corsproxyorg', name: 'corsproxy.org',            tpl: 'https://corsproxy.org/?{enc}' },
     { id: 'euorg',        name: 'cors.eu.org',              tpl: 'https://cors.eu.org/{raw}' },
     { id: 'corslol',      name: 'cors.lol',                 tpl: 'https://api.cors.lol/?url={enc}' },
+    { id: 'corsdev',      name: 'cors.dev',                 tpl: 'https://proxy.cors.dev/{raw}' },
     { id: 'x2u',          name: 'cors.x2u.in',              tpl: 'https://cors.x2u.in/{raw}' },
     { id: 'azm',          name: 'CORS Anywhere (Workers)',  tpl: 'https://cors-anywhere.azm.workers.dev/{raw}' },
     { id: 'zibri',        name: 'cors.workers.dev',         tpl: 'https://test.cors.workers.dev/?{raw}' },
@@ -947,7 +957,7 @@ export default {
     tabs.forEach((x) => x.frame.classList.toggle('active', x === t && !!x.url && !x.error));
     $('#loadbar').classList.toggle('on', t.loading);
     $('#hostbar').classList.toggle('show', !!t.hostedFront && !!t.url && !t.error);
-    if (t.hostedFront && t.url) $('#hostUrl').textContent = displayUrl(t.url);
+    if (t.hostedFront && t.url) { $('#hostUrl').textContent = displayUrl(t.url); renderHostPick(); }
     if (t.error) {
       $('#errTitle').textContent = 'Couldn’t load this page';
       $('#errUrl').textContent = t.error.url;
@@ -1329,6 +1339,8 @@ export default {
       case 'theme': S.theme = val; if (THEMES[val] && THEMES[val].fx && !THEMES[val].custom) S.fx = THEMES[val].fx; applyAll(); save(); renderSettings(true); break;
       case 'sign-in': toggleSettings(false); openAuth(val); break;
       case 'sign-out': signOut(); break;
+      case 'acct-backup': backupAccounts(); break;
+      case 'acct-restore': restoreAccounts(); break;
       case 'engine': S.engine = val; save(); syncNav(); renderSettings(true); break;
       case 'test-relays': testRelays(); break;
       case 'clear-history': data.history = []; save(); toast('History cleared'); break;
@@ -1338,6 +1350,7 @@ export default {
           (async () => {
             try { if (A.mode === 'firebase' && A.user) await signOut(true); } catch { /* noop */ }
             try { Object.keys(localStorage).filter((k) => k.startsWith('wavey.')).forEach((k) => localStorage.removeItem(k)); } catch { /* noop */ }
+            try { indexedDB.deleteDatabase('wavey-accounts'); } catch { /* noop */ }
             Object.keys(mem).forEach((k) => delete mem[k]);
             window.onbeforeunload = null; window.__wipe = true;
             location.reload();
@@ -1460,7 +1473,7 @@ export default {
   function handleKey(k) {
     const mod = k.ctrl || k.meta;
     if (k.key === 'Escape') {
-      if (authOpen()) return true; else if (dlgOpen()) closeDlg(); else if (menuOpen()) closeMenu(); else if (creditsOpen()) toggleCredits(false); else if (settingsOpen()) toggleSettings(false); else if (panelName) closePanel(); else if (suggestOpen()) closeSuggest();
+      if (gmenuOpen()) closeGmenu(); else if (infoOpen()) toggleInfo(false); else if (authOpen()) return true; else if (dlgOpen()) closeDlg(); else if (menuOpen()) closeMenu(); else if (creditsOpen()) toggleCredits(false); else if (settingsOpen()) toggleSettings(false); else if (panelName) closePanel(); else if (suggestOpen()) closeSuggest();
       return true;
     }
     if (k.alt && !mod) {
@@ -1643,6 +1656,18 @@ export default {
     }
     refresh();
   }
+  function renderHostPick() {
+    const cur = String(S.hosted || '').trim();
+    $('#hostPick').innerHTML = HOSTED_PROXIES.map((p) => `<button type="button" data-hp="${esc(p.url)}" class="${p.url === cur ? 'on' : ''}" aria-pressed="${p.url === cur}">${esc(p.name)}</button>`).join('');
+  }
+  $('#hostPick').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hp]');
+    if (!b) return;
+    S.hosted = b.dataset.hp; save();
+    renderHostPick();
+    const t = tab();
+    if (t && t.url) { try { loadHosted(t, t.url, t.nav); } catch (er) { toast(er.message, 'warn'); } }
+  });
   $('#hostCopy').addEventListener('click', () => { const t = tab(); if (t && t.url) copyText(t.url); });
   $('#hostClose').addEventListener('click', () => { const t = tab(); if (t) { t.hostedFront = false; updateView(); } });
 
@@ -1665,7 +1690,7 @@ export default {
   gearBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSettings(); });
 
   /* ═══════════════════════════ Sections (Browser / Games / Tools / Apps / Partners) ═══════════════════════════ */
-  const PAGES = ['browser', 'games', 'tools', 'apps', 'partners'];
+  const PAGES = ['browser', 'games', 'gba', 'cloud', 'tools', 'apps', 'partners', 'single'];
   let page = 'browser';
   const viewportEl = $('#viewport');
 
@@ -1673,16 +1698,35 @@ export default {
     if (!PAGES.includes(p)) p = 'browser';
     page = p;
     viewportEl.dataset.page = p;
-    $$('#pagenav .pn').forEach((b) => b.setAttribute('aria-current', b.dataset.page === p ? 'page' : 'false'));
+    $$('#pagenav .pn').forEach((b) => b.setAttribute('aria-current', (b.dataset.page === p || (b.dataset.group || '').split(',').includes(p)) ? 'page' : 'false'));
     if (p !== 'tools') closeTool();
-    if (p === 'games') showGames();
+    if (p === 'games' || p === 'gba') showGames(p);
     else if (p === 'tools') renderTools();
     else if (p === 'apps') renderApps();
     else updateView();
-    const sc = $('#page-' + p);
-    if (sc && p !== 'games') sc.scrollTop = 0;
+    const sc = $('#page-' + (p === 'gba' ? 'games' : (p === 'cloud' || p === 'single') ? 'soon' : p));
+    if (sc && p !== 'games' && p !== 'gba') sc.scrollTop = 0;
   }
-  $('#pagenav').addEventListener('click', (e) => { const b = e.target.closest('.pn'); if (b) setPage(b.dataset.page); });
+  $('#pagenav').addEventListener('click', (e) => {
+    const b = e.target.closest('.pn');
+    if (!b) return;
+    if (b.dataset.drop) { e.stopPropagation(); gmenuOpen() ? closeGmenu() : openGmenu(b); return; }
+    closeGmenu(); setPage(b.dataset.page);
+  });
+  // Games drop-down: html games / gba games / cloud gaming
+  const gmenu = $('#gmenu');
+  const gmenuOpen = () => gmenu.classList.contains('open');
+  function openGmenu(btn) {
+    closeMenu();
+    const r = btn.getBoundingClientRect();
+    gmenu.style.top = (r.bottom + 6) + 'px';
+    gmenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 198)) + 'px';
+    gmenu.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+  function closeGmenu() { gmenu.classList.remove('open'); const b = $('#pagenav .pn[data-drop]'); if (b) b.setAttribute('aria-expanded', 'false'); }
+  gmenu.addEventListener('click', (e) => { const b = e.target.closest('[data-gm]'); if (!b) return; closeGmenu(); setPage(b.dataset.gm); });
+  document.addEventListener('click', (e) => { if (gmenuOpen() && !e.target.closest('#gmenu')) closeGmenu(); });
 
   /* ───────── Games: your games site, framed ─────────
      • sandbox WITHOUT allow-top-navigation, so a page can never frame-bust (top.location = …)
@@ -1690,15 +1734,16 @@ export default {
      • "Compatibility mode" fetches the page (GitHub Pages is CORS-open) and renders it from srcdoc,
        which sidesteps X-Frame-Options / frame-ancestors if the host ever adds them.            */
   const GAMES_URL = 'https://levelzproxy.github.io/test/';
+  const GBA_URL = 'https://gba-sfum.vercel.app/';
   const GAMES_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-pointer-lock allow-presentation';
-  let gamesInit = false, gamesTimer = 0;
+  let gamesCur = '', gamesTimer = 0;
 
   function mountGames(compat) {
     const wrap = $('#gWrap');
     const old = $('#gFrame');
     if (old) old.remove();
     const f = document.createElement('iframe');
-    f.id = 'gFrame'; f.className = 'gframe'; f.title = 'Games';
+    f.id = 'gFrame'; f.className = 'gframe'; f.title = $('#gTitle').textContent;
     f.setAttribute('sandbox', compat ? GAMES_SANDBOX.replace(' allow-same-origin', '') : GAMES_SANDBOX);
     f.setAttribute('allow', 'fullscreen; autoplay; gamepad; clipboard-write; encrypted-media');
     f.setAttribute('referrerpolicy', 'no-referrer');
@@ -1710,19 +1755,23 @@ export default {
     clearTimeout(gamesTimer);
     gamesTimer = setTimeout(() => { if (!ov.hidden) msg.textContent = 'Still loading… try Compatibility mode, or open it in a new tab.'; }, 9000);
     if (compat) {
-      fetch(GAMES_URL, { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' })
+      fetch(gamesCur, { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' })
         .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
         .then((html) => {
-          const base = '<base href="' + GAMES_URL + '">';
+          const base = '<base href="' + gamesCur + '">';
           f.srcdoc = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + base) : base + html;
         })
         .catch((e) => { msg.textContent = 'Compatibility mode couldn’t fetch the page (' + (e.message || 'network error') + ').'; });
-    } else f.src = GAMES_URL;
+    } else f.src = gamesCur;
   }
-  function showGames() { if (!gamesInit) { gamesInit = true; mountGames(false); } }
+  function showGames(p) {
+    const url = p === 'gba' ? GBA_URL : GAMES_URL;
+    $('#gTitle').textContent = p === 'gba' ? 'GBA games' : 'Games';
+    if (gamesCur !== url) { gamesCur = url; mountGames(false); }
+  }
   $('#gReload').addEventListener('click', () => mountGames(false));
   $('#gCompat').addEventListener('click', () => mountGames(true));
-  $('#gNew').addEventListener('click', () => window.open(GAMES_URL, '_blank', 'noopener'));
+  $('#gNew').addEventListener('click', () => window.open(gamesCur || GAMES_URL, '_blank', 'noopener'));
   $('#gFull').addEventListener('click', () => {
     try { const w = $('#gWrap'); if (document.fullscreenElement) document.exitFullscreen(); else w.requestFullscreen(); } catch { toast('Fullscreen isn’t available here', 'warn'); }
   });
@@ -2163,14 +2212,26 @@ export default {
 
   /* ═══════════════════════════ v1.02 — Footer: version & credits ═══════════════════════════ */
   $('#footNote').textContent = `Wavey chps v.${VERSION}`;
+  const infoBtn = $('#infoBtn'), infoPop = $('#infoPop');
+  const infoOpen = () => infoPop.classList.contains('open');
+  function toggleInfo(force) {
+    const on = typeof force === 'boolean' ? force : !infoOpen();
+    infoPop.classList.toggle('open', on);
+    infoPop.setAttribute('aria-hidden', String(!on));
+    infoBtn.setAttribute('aria-expanded', String(on));
+  }
+  infoBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleInfo(); });
+  document.addEventListener('click', (e) => { if (infoOpen() && !e.target.closest('#infoPop')) toggleInfo(false); });
+  window.addEventListener('blur', () => { if (infoOpen()) toggleInfo(false); if (gmenuOpen()) closeGmenu(); }); // a click inside a page frame doesn't reach this document
   const cframe = $('#cframe'), cBody = $('#cframeBody'), creditsBtn = $('#creditsBtn');
   const creditsOpen = () => cframe.classList.contains('open');
   function renderCredits() {
-    const rows = CREDITS.map((c) => {
+    const mk = (list) => list.map((c) => {
       const nm = c.url && isHttp(c.url) ? `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.name)}</a>` : esc(c.name);
       return `<div class="credit"><span class="av" style="background:${avatarBg(c.name)}">${esc((c.name[0] || '?').toUpperCase())}</span><div class="tx"><b>${nm}</b><small>${esc(c.role || '')}</small></div></div>`;
     }).join('');
-    cBody.innerHTML = (CREDITS_INTRO ? `<p class="credit-intro">${esc(CREDITS_INTRO)}</p>` : '') + `<div class="credit-list">${rows || '<div class="panel-empty">No credits yet.</div>'}</div>`;
+    cBody.innerHTML = (CREDITS_INTRO ? `<p class="credit-intro">${esc(CREDITS_INTRO)}</p>` : '') + `<div class="credit-list">${mk(CREDITS) || '<div class="panel-empty">No credits yet.</div>'}</div>`
+      + (CREDITS_PROXIES.length ? `<h3 class="credit-h">Hosted proxies</h3><div class="credit-list">${mk(CREDITS_PROXIES)}</div>` : '');
   }
   function toggleCredits(force) {
     const on = typeof force === 'boolean' ? force : !creditsOpen();
@@ -2493,7 +2554,6 @@ export default {
   const SESS_KEY = 'wavey.auth.session', USERS_KEY = 'wavey.auth.users', SKIP_KEY = 'wavey.auth.skip', SKIPU_KEY = 'wavey.auth.skipUser';
   const FB_VER = '10.14.0';
   const A = { user: null, mode: AUTH.firebase && AUTH.firebase.apiKey ? 'firebase' : 'local', fb: null, fbReady: null, tab: 'in', busy: false };
-  const googleMode = () => (A.mode === 'firebase' ? 'firebase' : AUTH.googleClientId ? 'gis' : 'none');
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function readSession() {
@@ -2516,11 +2576,15 @@ export default {
     const u = A.user;
     if (!u) return `<div class="group"><h3>Account</h3>
       <div class="acct"><span class="av" style="background:${avatarBg('guest')}">?</span><div class="tx"><b>Browsing as guest</b><small>Sign in to keep your name on this device</small></div></div>
-      <div class="btnrow"><button class="btn sm primary" data-act="sign-in" data-val="in">Sign in</button><button class="btn sm" data-act="sign-in" data-val="up">Create account</button></div></div>`;
+      <div class="btnrow"><button class="btn sm primary" data-act="sign-in" data-val="in">Sign in</button><button class="btn sm" data-act="sign-in" data-val="up">Create account</button></div>${acctBackupHtml()}</div>`;
     const av = u.picture ? `<img src="${esc(u.picture)}" alt="" referrerpolicy="no-referrer">` : esc(((u.name || u.email)[0] || '?').toUpperCase());
     return `<div class="group"><h3>Account</h3>
-      <div class="acct"><span class="av" style="background:${avatarBg(u.email)}">${av}</span><div class="tx"><b>${esc(u.name || u.email)}</b><small>${esc(u.email)} · ${u.provider === 'google' ? 'Google' : 'Email'}</small></div></div>
-      <div class="btnrow"><button class="btn sm" data-act="sign-out">Sign out</button></div></div>`;
+      <div class="acct"><span class="av" style="background:${avatarBg(u.email)}">${av}</span><div class="tx"><b>${esc(u.name || u.email)}</b><small>${esc(u.email)}</small></div></div>
+      <div class="btnrow"><button class="btn sm" data-act="sign-out">Sign out</button></div>${acctBackupHtml()}</div>`;
+  }
+  function acctBackupHtml() {
+    if (A.mode === 'firebase') return '';
+    return `<div class="btnrow"><button class="btn sm" data-act="acct-backup">${icon('download')}Save account backup</button><button class="btn sm" data-act="acct-restore">${icon('upload')}Restore backup</button></div><small>Accounts live in this browser. The backup file lets you use them on another device.</small>`;
   }
 
   /* — Firebase (loaded only when AUTH.firebase is filled in) — */
@@ -2545,14 +2609,12 @@ export default {
     A.fbReady.catch(() => { A.fbReady = null; });
     return A.fbReady;
   }
-  const fbUser = (fu) => ({ provider: (fu.providerData && fu.providerData[0] && fu.providerData[0].providerId === 'google.com') ? 'google' : 'email', email: fu.email || '', name: fu.displayName || (fu.email || '').split('@')[0], picture: fu.photoURL || '' });
+  const fbUser = (fu) => ({ provider: 'email', email: fu.email || '', name: fu.displayName || (fu.email || '').split('@')[0], picture: fu.photoURL || '' });
   const FB_ERR = {
     'auth/invalid-credential': 'Incorrect email or password.', 'auth/wrong-password': 'Incorrect email or password.', 'auth/user-not-found': 'Incorrect email or password.',
     'auth/email-already-in-use': 'An account with that email already exists — try signing in.', 'auth/weak-password': 'Choose a stronger password (at least 8 characters).',
     'auth/invalid-email': 'That email address doesn’t look right.', 'auth/too-many-requests': 'Too many attempts. Wait a minute and try again.',
-    'auth/network-request-failed': 'Couldn’t reach the sign-in service. Check your connection.', 'auth/popup-closed-by-user': 'The Google window was closed before finishing.',
-    'auth/cancelled-popup-request': 'The Google window was closed before finishing.', 'auth/popup-blocked': 'Your browser blocked the Google pop-up. Allow pop-ups and try again.',
-    'auth/unauthorized-domain': 'This website’s address hasn’t been added to Firebase “Authorized domains” yet.', 'auth/operation-not-allowed': 'That sign-in method isn’t switched on in Firebase yet.'
+    'auth/network-request-failed': 'Couldn’t reach the sign-in service. Check your connection.',     'auth/unauthorized-domain': 'This website’s address hasn’t been added to Firebase “Authorized domains” yet.', 'auth/operation-not-allowed': 'That sign-in method isn’t switched on in Firebase yet.'
   };
   const fbMsg = (e) => FB_ERR[e && e.code] || ((e && e.message) || 'Something went wrong.').replace(/^Firebase: /, '');
 
@@ -2565,6 +2627,53 @@ export default {
     return b64e(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 150000 }, k, 256)));
   }
   const readUsers = () => { try { return JSON.parse(ls.get(USERS_KEY) || '{}') || {}; } catch { return {}; } };
+  // Second copy of the accounts in IndexedDB, so they survive if the browser drops localStorage on its own.
+  const idbOpen = () => new Promise((res, rej) => {
+    try { const r = indexedDB.open('wavey-accounts', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); }
+  });
+  async function idbSet(k, v) {
+    try { const db = await idbOpen(); await new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); db.close(); } catch { /* optional */ }
+  }
+  async function idbGet(k) {
+    try { const db = await idbOpen(); const v = await new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); db.close(); return v; } catch { return null; }
+  }
+  function saveUsers(users) { const j = JSON.stringify(users); ls.set(USERS_KEY, j); idbSet('users', j); }
+  async function restoreMirror() {
+    if (Object.keys(readUsers()).length) return;
+    const j = await idbGet('users');
+    if (j) { try { if (Object.keys(JSON.parse(j) || {}).length) ls.set(USERS_KEY, j); } catch { /* ignore */ } }
+  }
+  function backupAccounts() {
+    const users = readUsers();
+    if (!Object.keys(users).length) return toast('There are no accounts on this device to back up yet', 'warn');
+    const blob = new Blob([JSON.stringify({ app: 'wavey-chps-accounts', v: 1, users }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'wavey-accounts-backup.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Account backup saved — keep that file somewhere safe');
+  }
+  function restoreAccounts() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json,.json';
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => {
+        try {
+          const d = JSON.parse(rd.result);
+          if (!d || d.app !== 'wavey-chps-accounts' || !d.users || typeof d.users !== 'object') throw new Error('bad');
+          const users = readUsers(); let n = 0;
+          Object.keys(d.users).forEach((k) => { const u = d.users[k]; if (u && u.salt && u.hash && !users[k]) { users[k] = { name: String(u.name || k.split('@')[0]).slice(0, 40), salt: String(u.salt), hash: String(u.hash), t: Number(u.t) || Date.now() }; n++; } });
+          saveUsers(users);
+          toast(n ? `Restored ${n} account${n > 1 ? 's' : ''} — you can sign in now` : 'Those accounts were already on this device');
+        } catch { toast('That file isn’t a Wavey account backup', 'warn'); }
+      };
+      rd.readAsText(f);
+    });
+    inp.click();
+  }
 
   async function emailSignUp(name, email, pw) {
     if (A.mode === 'firebase') {
@@ -2579,7 +2688,7 @@ export default {
     if (users[key]) throw new Error('An account with that email already exists on this device — try signing in.');
     const salt = crypto.getRandomValues(new Uint8Array(16));
     users[key] = { name: name || email.split('@')[0], salt: b64e(salt), hash: await hashPw(pw, salt), t: Date.now() };
-    ls.set(USERS_KEY, JSON.stringify(users));
+    saveUsers(users);
     setUser({ provider: 'email', email: key, name: users[key].name, picture: '' });
   }
   async function emailSignIn(email, pw) {
@@ -2603,56 +2712,6 @@ export default {
     await A.fb.api.sendPasswordResetEmail(A.fb.auth, email);
   }
 
-  /* — Google — */
-  function jwtPayload(tok) {
-    const p = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(decodeURIComponent(atob(p).split('').map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')));
-  }
-  let gisLoad = null;
-  function loadGis() {
-    if (window.google && google.accounts && google.accounts.id) return Promise.resolve();
-    if (gisLoad) return gisLoad;
-    gisLoad = new Promise((res, rej) => {
-      const s = document.createElement('script');
-      s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
-      s.onload = res; s.onerror = () => { gisLoad = null; rej(new Error('Couldn’t load Google sign-in.')); };
-      document.head.appendChild(s);
-    });
-    return gisLoad;
-  }
-  async function renderGoogleButton() {
-    const slot = $('#gSlot');
-    if (!slot || googleMode() !== 'gis') return;
-    try {
-      await loadGis();
-      google.accounts.id.initialize({
-        client_id: AUTH.googleClientId,
-        callback: (resp) => {
-          try {
-            const p = jwtPayload(resp.credential);
-            setUser({ provider: 'google', email: p.email, name: p.name || p.given_name || p.email, picture: p.picture || '' });
-            authDone();
-          } catch { showAuthErr('Google sign-in failed. Try again.'); }
-        }
-      });
-      google.accounts.id.renderButton(slot, { type: 'standard', theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'pill', logo_alignment: 'left', width: 330 });
-      $('#gBtn').hidden = true;
-    } catch { /* the custom button stays and explains */ }
-  }
-  async function googleClick() {
-    const m = googleMode();
-    if (m === 'firebase') {
-      busy(true);
-      try {
-        await loadFirebase();
-        const { auth, api } = A.fb;
-        A.user = fbUser((await api.signInWithPopup(auth, new api.GoogleAuthProvider())).user);
-        authDone();
-      } catch (e) { showAuthErr(fbMsg(e)); } finally { busy(false); }
-    } else if (m === 'gis') showAuthErr('Google sign-in is still loading — if no Google button appears, check your connection or ad-blocker.');
-    else showAuthErr('Google sign-in isn’t set up on this copy of the site yet. Might add in future update but lowk kinda hard so maybe not');
-  }
-
   async function signOut(quiet) {
     try { if (A.mode === 'firebase') { await loadFirebase(); await A.fb.api.signOut(A.fb.auth); } } catch { /* ignore */ }
     A.user = null;
@@ -2666,16 +2725,12 @@ export default {
   /* — Dialog UI — */
   const authEl = $('#auth'), authCard = $('#authCard');
   const authOpen = () => authEl.classList.contains('open');
-  const GICON = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
   function authHtml() {
     const up = A.tab === 'up', skip = ls.get(SKIP_KEY) === '1';
-    const note = A.mode === 'firebase' ? 'Accounts are handled by Firebase Authentication.' : 'Accounts are saved only in this browser, on this device.';
+    const note = A.mode === 'firebase' ? 'Accounts are handled by Firebase Authentication.' : 'Accounts are saved in this browser. Save a backup file in Settings to use them on another device.';
     return `<form id="authForm" novalidate>
       <div class="auth-top"><img src="${esc(LOGO)}" alt=""><h2 id="authTitle">${up ? 'Create your account' : 'Welcome back'}</h2><p>${up ? 'Sign up to personalise Wavey chps.' : 'Sign in to Wavey chps.'}</p></div>
       <div class="atabs" role="tablist"><button type="button" role="tab" data-atab="in" class="${up ? '' : 'on'}" aria-selected="${!up}">Sign in</button><button type="button" role="tab" data-atab="up" class="${up ? 'on' : ''}" aria-selected="${up}">Sign up</button></div>
-      <button type="button" class="gbtn" id="gBtn" data-aact="google">${GICON}${up ? 'Sign up with Google' : 'Sign in with Google'}</button>
-      <div class="gslot" id="gSlot" ${googleMode() === 'gis' ? '' : 'hidden'}></div>
-      <div class="or">or use email</div>
       ${up ? '<label class="fld"><span>Name <i>(optional)</i></span><input id="aName" type="text" maxlength="40" autocomplete="name"></label>' : ''}
       <label class="fld"><span>Email</span><input id="aEmail" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" required></label>
       <label class="fld"><span>Password</span><div class="pwrap"><input id="aPw" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" required minlength="8"><button type="button" data-aact="showpw" aria-label="Show password">Show</button></div></label>
@@ -2684,6 +2739,7 @@ export default {
       <div class="arow"><label class="chk"><input type="checkbox" id="authSkip" ${skip ? 'checked' : ''}>Don’t show this again</label>${up ? '' : '<button type="button" class="linkbtn" data-aact="forgot">Forgot password?</button>'}</div>
       <button type="button" class="guest" data-aact="guest">continue as guest</button>
       <p class="auth-note">${note}</p>
+      ${A.mode === 'firebase' ? '' : '<button type="button" class="auth-restore" data-aact="restore">Restore my accounts from a backup file</button>'}
     </form>`;
   }
   function openAuth(tabName) {
@@ -2692,7 +2748,6 @@ export default {
     authEl.classList.add('open');
     authEl.setAttribute('aria-hidden', 'false');
     setBackgroundInert(true);
-    renderGoogleButton();
     setTimeout(() => { const f = $('#aEmail'); if (f) f.focus({ preventScroll: true }); }, 80);
   }
   function closeAuth() {
@@ -2720,7 +2775,7 @@ export default {
     if (t.dataset.atab) { A.tab = t.dataset.atab; const sk = $('#authSkip') ? $('#authSkip').checked : false; openAuth(); $('#authSkip').checked = sk; return; }
     switch (t.dataset.aact) {
       case 'guest': rememberSkip(false); closeAuth(); break;
-      case 'google': googleClick(); break;
+      case 'restore': restoreAccounts(); break;
       case 'showpw': { const i = $('#aPw'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; t.textContent = show ? 'Hide' : 'Show'; break; }
       case 'forgot': {
         const em = $('#aEmail').value.trim();
@@ -2757,6 +2812,7 @@ export default {
   $('#acctBtn').addEventListener('click', (e) => { e.stopPropagation(); if (A.user) { toggleSettings(true); sframeBody.scrollTop = 0; } else openAuth(); });
 
   async function authStartup() {
+    if (A.mode !== 'firebase') await restoreMirror();
     readSession();
     renderAccount();
     if (A.mode === 'firebase') { try { await Promise.race([loadFirebase(), sleep(4000)]); } catch { /* offline: fall through */ } }
