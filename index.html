@@ -55,6 +55,8 @@
   <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></symbol>
   <symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.7a3.5 3.5 0 0 1 0 6.6M18 14.8c2 .6 3.2 2.3 3.5 5.2"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h0"/></symbol>
 </svg>
 
@@ -100,10 +102,11 @@
     </div>
     <nav class="pagenav" id="pagenav" aria-label="Sections">
       <button class="pn" type="button" data-page="browser" aria-current="page"><svg class="i"><use href="#i-compass"/></svg>Browser</button>
-      <button class="pn" type="button" data-page="games"><svg class="i"><use href="#i-gamepad"/></svg>Games</button>
+      <button class="pn" type="button" data-page="games" data-group="games,gba,cloud" data-drop="1" aria-haspopup="true" aria-expanded="false"><svg class="i"><use href="#i-gamepad"/></svg>Games<svg class="i chev"><use href="#i-chev"/></svg></button>
       <button class="pn" type="button" data-page="tools"><svg class="i"><use href="#i-wrench"/></svg>Tools</button>
       <button class="pn" type="button" data-page="apps"><svg class="i"><use href="#i-apps"/></svg>Apps</button>
       <button class="pn" type="button" data-page="partners"><svg class="i"><use href="#i-users"/></svg>Partners</button>
+      <button class="pn" type="button" data-page="single"><svg class="i"><use href="#i-code"/></svg>single-file html code (inf links)</button>
       <div class="online" id="online" role="status" aria-live="off" title="Showing this device only — live count is offline"><i class="dot"></i><b id="onlineN">1</b><span id="onlineLbl">User Online</span></div>
     </nav>
     <div class="loadbar" id="loadbar" aria-hidden="true"><i></i></div>
@@ -142,6 +145,7 @@
     <div class="frames" id="frames"></div>
     <div class="hostbar" id="hostbar" role="status">
       <span>Hosted proxy opened — paste <b id="hostUrl"></b> into its search box.</span>
+      <div class="hostpick" id="hostPick" role="group" aria-label="Choose a hosted proxy"></div>
       <button class="btn sm" id="hostCopy" type="button">Copy address</button>
       <button class="icon-btn sm" id="hostClose" type="button" aria-label="Dismiss"><svg class="i"><use href="#i-close"/></svg></button>
     </div>
@@ -163,7 +167,7 @@
 
     <section class="page" id="page-games" aria-label="Games">
       <div class="gbar">
-        <b>Games</b><span class="grow"></span>
+        <b id="gTitle">Games</b><span class="grow"></span>
         <button class="btn sm" id="gReload" type="button" title="Reload the games page"><svg class="i"><use href="#i-reload"/></svg>Reload</button>
         <button class="btn sm" id="gCompat" type="button" title="Use this if the page shows a ‘refused to connect’ error">Compatibility mode</button>
         <button class="btn sm" id="gNew" type="button"><svg class="i"><use href="#i-external"/></svg>New tab</button>
@@ -188,6 +192,9 @@
         </article>
       </div>
     </section>
+    <section class="page" id="page-soon" aria-label="Coming soon">
+      <div class="soon"><h1>coming soon 👀</h1></div>
+    </section>
   </main>
 
   <footer class="foot">
@@ -196,11 +203,21 @@
       <button class="foot-btn" id="creditsBtn" type="button" aria-expanded="false" aria-controls="cframe">Credits</button>
       <button class="foot-btn" id="acctBtn" type="button" title="Account">Sign in</button>
     </div>
-    <span class="foot-note" id="footNote">Wavey chps v.1.02</span>
+    <span class="foot-r"><button class="foot-info" id="infoBtn" type="button" aria-label="Important information" aria-expanded="false" aria-controls="infoPop" title="Important information"><svg class="i"><use href="#i-info"/></svg></button><span class="foot-note" id="footNote">Wavey chps v.1.02</span></span>
   </footer>
 </div>
 
 <!-- Menu -->
+<div class="menu gmenu" id="gmenu" role="menu" aria-label="Games">
+  <button role="menuitem" data-gm="games"><svg class="i"><use href="#i-gamepad"/></svg>html games</button>
+  <button role="menuitem" data-gm="gba"><svg class="i"><use href="#i-gamepad"/></svg>gba games</button>
+  <button role="menuitem" data-gm="cloud"><svg class="i"><use href="#i-globe"/></svg>cloud gaming</button>
+</div>
+
+<div class="infopop" id="infoPop" role="dialog" aria-label="Important information" aria-hidden="true">
+  <p>WARNING: This project is made with templates, chatgpt, and borrowed ideas and features from other sites so please do NOT except this to be the best proxy or better then any other proxy, this is just smth I made for fun and it will probably have a lot of bugs and features that break/don't work</p>
+</div>
+
 <div class="menu" id="menu" role="menu" aria-label="Main menu">
   <button role="menuitem" data-act="new-tab"><svg class="i"><use href="#i-plus"/></svg>New tab<kbd>Alt T</kbd></button>
   <button role="menuitem" data-act="bookmarks"><svg class="i"><use href="#i-bookmark"/></svg>Bookmarks</button>
