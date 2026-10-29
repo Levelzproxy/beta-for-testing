@@ -2650,7 +2650,7 @@ export default {
         authDone();
       } catch (e) { showAuthErr(fbMsg(e)); } finally { busy(false); }
     } else if (m === 'gis') showAuthErr('Google sign-in is still loading — if no Google button appears, check your connection or ad-blocker.');
-    else showAuthErr('Google sign-in isn’t set up on this copy of the site yet. The site owner needs to add a Google Client ID in the AUTH block of script.js. Email sign-in works now.');
+    else showAuthErr('Google sign-in isn’t set up on this copy of the site yet. Might add in future update but lowk kinda hard so maybe not');
   }
 
   async function signOut(quiet) {
