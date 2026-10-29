@@ -7,7 +7,7 @@
   'use strict';
 
   /* ╔══════════════════════════════════════════════════════════════════════════════╗
-     ║   ★★★  EDIT ME  —  the only part of this file you need to change  ★★★        ║
+     ║                                 CREDITS                                      ║
      ╚══════════════════════════════════════════════════════════════════════════════╝ */
 
   // 1) RELEASE VERSION — shown at the bottom right as "Wavey chps v.<VERSION>".
@@ -20,8 +20,8 @@
   //    • Change the text above the list → edit CREDITS_INTRO.
   const CREDITS_INTRO = 'Wavey chps is made possible by these people and projects.';
   const CREDITS = [
-    { name: 'Your Name Here',        role: 'Creator & developer of Wavey chps', url: '' },
-    { name: 'Another Person',        role: 'Design / testing / ideas',           url: '' },
+    { name: 'chps',        role: 'Creator & developer of Wavey chps', url: '' },
+    { name: 'chps and Tobnyi',        role: 'Design / testing / ideas',           url: '' },
     { name: 'Tobnyi',                role: 'Meld — our partner',                 url: 'http://meld-gzpp.onrender.com/' },
     { name: 'Inter & Sora',          role: 'Fonts (Google Fonts)',               url: 'https://fonts.google.com/' },
     { name: 'AllOrigins, corsproxy.io, cors.eu.org and friends', role: 'Free public relays that load pages', url: '' }
@@ -1155,7 +1155,7 @@ export default {
         <div class="field"><div class="lbl">Interactive background</div><select data-key="fx" aria-label="Interactive background">${fxOpts}</select><small>Reacts to your mouse and clicks. Pauses by itself while a website is open.</small></div>
         <div class="field"><div class="lbl"><span>Glass blur</span><span id="glassVal">${S.glass}px</span></div><input type="range" min="0" max="40" value="${S.glass}" data-key="glass" aria-label="Glass blur"></div>
         ${sw('glow', 'Pointer glow', 'A soft light that follows your cursor.', S.glow)}
-        ${sw('cursor', 'Bean cursor', 'Use the jellybean mouse pointer (also inside pages loaded in Relay mode).', S.cursor)}
+        ${sw('cursor', 'greenchip cursor', 'Use the greenchip mouse pointer (also inside pages loaded in Relay mode).', S.cursor)}
         ${sw('motion', 'Animated background', 'Drifting colour glow and shimmer. Turn off to save battery.', S.motion)}
       </div>
       <div class="group"><h3>Browsing</h3>
