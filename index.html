@@ -57,6 +57,7 @@
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.7a3.5 3.5 0 0 1 0 6.6M18 14.8c2 .6 3.2 2.3 3.5 5.2"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
   <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h0"/></symbol>
 </svg>
 
@@ -105,6 +106,7 @@
       <button class="pn" type="button" data-page="games" data-group="games,gba,cloud" data-drop="1" aria-haspopup="true" aria-expanded="false"><svg class="i"><use href="#i-gamepad"/></svg>Games<svg class="i chev"><use href="#i-chev"/></svg></button>
       <button class="pn" type="button" data-page="tools"><svg class="i"><use href="#i-wrench"/></svg>Tools</button>
       <button class="pn" type="button" data-page="apps"><svg class="i"><use href="#i-apps"/></svg>Apps</button>
+      <button class="pn" type="button" data-page="ai"><svg class="i"><use href="#i-spark"/></svg>AI</button>
       <button class="pn" type="button" data-page="partners"><svg class="i"><use href="#i-users"/></svg>Partners</button>
       <button class="pn" type="button" data-page="single"><svg class="i"><use href="#i-code"/></svg>single-file html code (inf links)</button>
       <div class="online" id="online" role="status" aria-live="off" title="Showing this device only — live count is offline"><i class="dot"></i><b id="onlineN">1</b><span id="onlineLbl">User Online</span></div>
@@ -128,8 +130,7 @@
         </form>
 
         <div class="section-head">
-          <h2>Most visited</h2>
-          <button class="link" id="editTiles" type="button">Edit</button>
+          <h2>Shortcuts</h2>
         </div>
         <div class="tiles" id="tiles"></div>
 
