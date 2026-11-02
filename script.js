@@ -41,15 +41,17 @@
     firebase: { apiKey: '', authDomain: '', projectId: '', appId: '' }
   };
 
-  // 4) "USERS ONLINE" counter near the top of the page.
-  //    • Leave as is  → uses the free public ntfy.sh service (no sign-up). It works but anyone could fake the number.
-  //    • Better       → a Firebase Realtime Database: paste its URL in firebaseDbUrl, e.g.
-  //                     'https://YOUR-PROJECT-default-rtdb.firebaseio.com'  and set its Rules to:
-  //      {"rules":{"presence":{".read":true,".indexOn":["t"],"$id":{".write":true,".validate":"newData.hasChild('t') && newData.child('t').isNumber()"}}}}
-  //    • Change ntfyTopic to any long random word so your count is only yours.
+  // 4) "USERS ONLINE" counter near the top of the page. Nothing to set up.
+  //    Every visitor keeps a live connection open to free public WebTorrent trackers; the TRACKER SERVERS count the
+  //    open connections. There is no web address anybody can send a number to, so the count can't be faked by pasting
+  //    a link or editing a request — faking it means writing a custom WebSocket program. If several trackers answer,
+  //    the lower middle value is shown, so flooding one of them doesn't move the number.
+  //    • trackers      → the public trackers to ask (add/remove lines freely, they must start with wss://)
+  //    • firebaseDbUrl → OPTIONAL, leave empty. Only if you ever set up your own Firebase database.
   const PRESENCE = {
+    trackers: ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev', 'wss://tracker.btorrent.xyz'],
     firebaseDbUrl: '',
-    ntfyTopic: 'wavey-chps-online-7f3k9x2q'
+    ntfyTopic: ''
   };
 
   /* ═══════════════════════════ end of the editable block ═══════════════════════════ */
@@ -98,6 +100,9 @@
   //   rendered→ page is rendered server-side (scripts are dropped)
   //   archive → last-resort copy from the Internet Archive
   const RELAYS = [
+    // Wisp tunnel: the browser opens its own TLS connection to the site through a Wisp server (libcurl.js, WebAssembly).
+    // No CORS limits, no size cap, real headers. The Wisp server only ever sees encrypted bytes.
+    { id: 'wisp',         name: 'Wisp tunnel',              tpl: '', wisp: true },
     { id: 'allorigins',   name: 'AllOrigins',               tpl: 'https://api.allorigins.win/raw?url={enc}' },
     { id: 'aojson',       name: 'AllOrigins (JSON)',        tpl: 'https://api.allorigins.win/get?url={enc}', field: 'contents' },
     { id: 'aohex',        name: 'AllOrigins mirror',        tpl: 'https://api.allorigins.hexlet.app/raw?url={enc}' },
@@ -208,7 +213,7 @@ export default {
   const DEFAULTS = {
     theme: 'violet', fx: 'constellation', glow: true, cursor: true, cA: '#a78bfa', cB: '#ec4899', cBg: '#0b0613', engine: 'relay', search: 'ddg', glass: 22, motion: true, restore: true,
     customRelay: '', disabledRelays: [], lastRelay: '', hosted: HOSTED_DEFAULT, hostedAuto: true,
-    cloakTitle: '', cloakIcon: '', panicKey: '`', panicUrl: 'https://www.wikipedia.org/'
+    wisp: '', cloakTitle: '', cloakIcon: '', panicKey: '`', panicUrl: 'https://www.wikipedia.org/'
   };
   const data = { settings: { ...DEFAULTS }, bookmarks: [], history: [], visits: {}, hidden: [], session: [], apps: [], pinned: [] };
   const S = data.settings;
@@ -275,7 +280,38 @@ export default {
   }
 
   /* ═══════════════════════════ Relay engine ═══════════════════════════ */
+  /* Wisp tunnel (libcurl.js from jsDelivr, loaded the first time it is needed) */
+  const WISP_LIB = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7/libcurl.js';
+  const WISP_WASM = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7/libcurl.wasm';
+  let wispP = null, wispUrl = '';
+  const abortP = (sig) => new Promise((_, rej) => {
+    const e = () => rej(new DOMException('Aborted', 'AbortError'));
+    if (sig.aborted) e(); else sig.addEventListener('abort', e, { once: true });
+  });
+  function loadWisp() {
+    if (wispP && wispUrl === S.wisp) return wispP;
+    wispUrl = S.wisp;
+    const mine = (wispP = new Promise((res, rej) => {
+      const go = async () => {
+        try { if (!window.libcurl.ready) await window.libcurl.load_wasm(WISP_WASM); window.libcurl.set_websocket(S.wisp); res(); } catch (e) { rej(e); }
+      };
+      if (window.libcurl) return go();
+      const sc = document.createElement('script');
+      sc.src = WISP_LIB; sc.async = true; sc.onload = go;
+      sc.onerror = () => rej(new Error('couldn’t load the tunnel library'));
+      document.head.appendChild(sc);
+    }));
+    mine.catch(() => { if (wispP === mine) wispP = null; });
+    return mine;
+  }
+  async function wispFetch(url, signal) {
+    if (!/^wss?:\/\//i.test(S.wisp || '')) throw new Error('no Wisp server set');
+    await Promise.race([loadWisp(), abortP(signal)]);
+    return Promise.race([window.libcurl.fetch(url, { redirect: 'follow', headers: { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' } }), abortP(signal)]);
+  }
+
   function relayUrl(r, url) {
+    if (r.wisp) return '';
     let t = r.tpl;
     if (!/\{(enc|raw)\}/.test(t)) t += '{enc}';
     return t.replace('{enc}', () => encodeURIComponent(url)).replace('{raw}', () => url);
@@ -301,7 +337,7 @@ export default {
   }
   function hscore(r) {
     const h = health[r.id];
-    if (!h || Date.now() - h.t > 864e5) return 2500;
+    if (!h || Date.now() - h.t > 864e5) return r.wisp ? 1200 : 2500;
     const tot = h.ok + h.bad, rate = tot ? h.ok / tot : 0.5;
     return (h.ms || 2500) * (1 + (1 - rate) * 3) + h.run * 1500;
   }
@@ -312,7 +348,7 @@ export default {
     if (mode === 'custom') return custom;
     const now = Date.now();
     const key = (r) => { const h = health[r.id]; return [relayTier(r) + (h && h.cool > now ? 10 : 0), hscore(r) - (r.id === S.lastRelay ? 800 : 0)]; };
-    const builtin = RELAYS.filter((r) => !S.disabledRelays.includes(r.id)).map((r) => ({ r, k: key(r) }))
+    const builtin = RELAYS.filter((r) => !S.disabledRelays.includes(r.id) && !(r.wisp && !S.wisp)).map((r) => ({ r, k: key(r) }))
       .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1]).map((x) => x.r);
     return [...custom, ...builtin];
   }
@@ -380,7 +416,7 @@ export default {
           launch();
         };
         try {
-          const resp = await fetch(relayUrl(r, url), { signal: c.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', headers: r.headers || {} });
+          const resp = r.wisp ? await wispFetch(url, c.signal) : await fetch(relayUrl(r, url), { signal: c.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', headers: r.headers || {} });
           if (done) return;
           if (!resp.ok) return end('HTTP ' + resp.status, resp.status !== 404 && resp.status !== 410);
           const ct = (resp.headers.get('content-type') || '').toLowerCase();
@@ -705,14 +741,14 @@ export default {
     return t;
   }
 
-  function openTab(input, { activate = true, at } = {}) {
+  function openTab(input, { activate = true, at, forceMode } = {}) {
     if (activate) setPage('browser');
     const t = createTab();
     if (typeof at === 'number') { tabs.splice(tabs.indexOf(t), 1); tabs.splice(at, 0, t); }
     if (activate) activeId = t.id;
     if (!activeId) activeId = t.id;
     refresh();
-    if (input) navigate(t, input);
+    if (input) navigate(t, input, forceMode ? { forceMode } : {});
     else if (activate) setTimeout(() => $('#homeInput').focus({ preventScroll: true }), 50);
     persistSession();
     return t;
@@ -737,6 +773,7 @@ export default {
     const t = tabs.find((x) => x.id === id);
     if (!t) return;
     activeId = id;
+    resumeTab(t);
     if (t.lazyUrl) { const u = t.lazyUrl; t.lazyUrl = null; t.url = null; navigate(t, { url: u }, { push: false }); return; }
     refresh();
   }
@@ -986,30 +1023,22 @@ export default {
     $('#clock').textContent = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) + ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
 
-  function topSites() {
-    const hidden = new Set(data.hidden);
-    const pinned = data.pinned.map((x) => ({ title: x.title, url: x.url, origin: originOf(x.url), meta: 'Pinned', pin: true }));
-    const pinnedO = new Set(pinned.map((x) => x.origin));
-    const limit = Math.max(7, pinned.length);
-    const mine = Object.entries(data.visits).filter(([o]) => !hidden.has(o) && !pinnedO.has(o)).sort((a, b) => b[1].count - a[1].count).slice(0, limit)
-      .map(([o, v]) => ({ title: (DEFAULT_SITES.find((d) => originOf(d.url) === o) || {}).title || hostOf(o), url: v.url || o + '/', origin: o, meta: v.count + (v.count === 1 ? ' visit' : ' visits') }));
-    const seen = new Set([...mine.map((m) => m.origin), ...pinnedO]);
-    const fill = DEFAULT_SITES.filter((d) => !seen.has(originOf(d.url)) && !hidden.has(originOf(d.url)))
-      .map((d) => ({ title: d.title, url: d.url, origin: originOf(d.url), meta: 'Suggested' }));
-    return [...pinned, ...mine, ...fill].slice(0, limit);
-  }
+  // Fixed shortcuts on the start page (not editable by visitors).
+  const SHORTCUTS = [
+    { title: 'Waveytube (Youtube unblocked)', url: 'https://waveytube.onrender.com/', mode: 'direct' },
+    { title: 'github',    url: 'https://github.com/' },
+    { title: 'wikipedia', url: 'https://www.wikipedia.org/' },
+    { title: 'reddit',    url: 'https://www.reddit.com/' },
+    { title: 'google',    url: 'https://www.google.com/' },
+    { title: 'discord',   url: 'https://discord.com/' }
+  ];
 
   function renderTiles() {
-    const items = topSites();
-    $('#tiles').innerHTML = items.map((s) => `
-      <a class="tile" href="${esc(s.url)}" data-url="${esc(s.url)}" data-origin="${esc(s.origin)}" ${s.pin ? 'data-pin="1"' : ''}>
+    $('#tiles').innerHTML = SHORTCUTS.map((s, i) => `
+      <a class="tile" href="${esc(s.url)}" data-i="${i}">
         <span class="av" style="background:${avatarBg(hostOf(s.url))}">${esc((s.title[0] || '?').toUpperCase())}</span>
-        <span class="nm">${esc(s.title)}</span><span class="mt">${esc(s.meta)}</span>
-        <span class="rm" data-rm role="button" aria-label="Remove ${esc(s.title)}">${icon('close')}</span>
-      </a>`).join('') + `
-      <button class="tile add" type="button" aria-label="Add a site to Most visited">
-        <span class="av">+</span><span class="nm">Add site</span><span class="mt">Pin your own</span>
-      </button>`;
+        <span class="nm">${esc(s.title)}</span><span class="mt">${esc(hostOf(s.url))}</span>
+      </a>`).join('');
   }
 
   /* ═══════════════════════════ Omnibox + suggestions ═══════════════════════════ */
@@ -1154,7 +1183,7 @@ export default {
       custom: 'Uses only the relay URLs you list below — your own Cloudflare Worker is the most reliable option.'
     };
     const relays = RELAYS.map((r) => `
-      <div class="relay"><div class="nfo"><b>${esc(r.name)}</b><small>${esc(hostOf(r.tpl))}${r.rendered ? ' · renders JS' : r.archive ? ' · archived copy' : r.lossy ? ' · small pages only' : ''}</small></div>
+      <div class="relay"><div class="nfo"><b>${esc(r.name)}</b><small>${r.wisp ? 'end-to-end encrypted tunnel · no CORS limits' : esc(hostOf(r.tpl))}${r.rendered ? ' · renders JS' : r.archive ? ' · archived copy' : r.lossy ? ' · small pages only' : ''}</small></div>
         <span class="rstat" data-rs="${r.id}"></span>
         <label class="switch"><input type="checkbox" data-relay="${r.id}" ${S.disabledRelays.includes(r.id) ? '' : 'checked'}><i></i></label></div>`).join('');
     const search = Object.entries(SEARCH).map(([k, v]) => `<option value="${k}" ${S.search === k ? 'selected' : ''}>${v.name}</option>`).join('');
@@ -1179,6 +1208,9 @@ export default {
         <div class="field"><div class="lbl">Your own relay URLs</div>
           <textarea data-key="customRelay" spellcheck="false" placeholder="https://my-relay.workers.dev/?url=">${esc(S.customRelay)}</textarea>
           <small>Paste as many as you like — one per line (they are tried first). Use <code>{enc}</code> or <code>{raw}</code> where the page address goes; if omitted, it is appended URL-encoded. See About for a 20-line Worker.</small></div>
+        <div class="field"><div class="lbl">Wisp server</div>
+          <input type="text" data-key="wisp" value="${esc(S.wisp)}" placeholder="wss://your-wisp-server.example/" spellcheck="false" aria-label="Wisp server address">
+          <small>Optional and off until you paste a server. It powers the “Wisp tunnel” relay: your browser connects to sites itself (end-to-end encrypted) through this server, so no CORS relay is needed. Must start with wss://. Use your own server — public demo servers ask not to be used by public sites.</small></div>
         <div class="field"><div class="lbl">Hosted proxy</div>
           <input type="text" data-key="hosted" value="${esc(S.hosted)}" placeholder="https://your-proxy.example/" spellcheck="false" aria-label="Hosted proxy address">
           <small>Shown inside Wavey when the public relays fail. A bare address opens that proxy’s own page (Wavey copies the site address for you to paste). If you know its URL pattern, use <code>{enc}</code>, <code>{b64}</code>, <code>{uv}</code> or <code>{raw}</code> — e.g. <code>https://host/service/{uv}</code>. Whoever runs a hosted proxy can see what is loaded through it.</small></div>
@@ -1192,7 +1224,7 @@ export default {
           <div class="two"><input type="text" data-key="panicKey" maxlength="1" value="${esc(S.panicKey)}" placeholder="\`" aria-label="Panic key"><input type="text" data-key="panicUrl" value="${esc(S.panicUrl)}" placeholder="https://www.wikipedia.org/" aria-label="Panic destination"></div>
           <small>Press the key (outside text boxes) to instantly leave this site for the address on the right.</small></div>
         <div class="field"><div class="lbl">Clear data</div>
-          <div class="btnrow"><button class="btn sm danger" data-act="clear-history">${icon('trash')}History</button><button class="btn sm danger" data-act="reset-tiles">${icon('trash')}Most visited</button><button class="btn sm danger" data-act="reset-all">${icon('trash')}Everything</button></div></div>
+          <div class="btnrow"><button class="btn sm danger" data-act="clear-history">${icon('trash')}History</button><button class="btn sm danger" data-act="reset-all">${icon('trash')}Everything</button></div></div>
       </div>
       <div class="group"><h3>Backup</h3>
         <div class="field"><div class="btnrow" style="margin-top:0"><button class="btn sm" data-act="export">${icon('download')}Export</button><button class="btn sm" data-act="import">${icon('upload')}Import</button></div>
@@ -1252,10 +1284,11 @@ export default {
     await Promise.all(list.map(async (r) => {
       const els = $$(`[data-rs="${r.id}"]`);
       const set = (cls, txt) => els.forEach((el) => { el.className = 'rstat ' + cls; el.textContent = txt; });
+      if (r.wisp && !S.wisp) { set('', 'off'); return; }
       const t0 = performance.now(), c = new AbortController();
-      const to = setTimeout(() => c.abort(), r.rendered || r.archive ? 6000 : 3500);
+      const to = setTimeout(() => c.abort(), r.wisp ? 12000 : r.rendered || r.archive ? 6000 : 3500);
       try {
-        const resp = await fetch(relayUrl(r, 'https://example.com/'), { signal: c.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', headers: r.headers || {} });
+        const resp = r.wisp ? await wispFetch('https://example.com/', c.signal) : await fetch(relayUrl(r, 'https://example.com/'), { signal: c.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', headers: r.headers || {} });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         let txt = await resp.text();
         if (r.field) { try { txt = JSON.parse(txt)[r.field] || ''; } catch { txt = ''; } }
@@ -1344,7 +1377,6 @@ export default {
       case 'engine': S.engine = val; save(); syncNav(); renderSettings(true); break;
       case 'test-relays': testRelays(); break;
       case 'clear-history': data.history = []; save(); toast('History cleared'); break;
-      case 'reset-tiles': data.visits = {}; data.hidden = []; save(); renderTiles(); toast('Most visited reset'); break;
       case 'reset-all':
         if (confirm('Erase all Wavey data on this device (settings, bookmarks, history, account and sign-in choices)?')) {
           (async () => {
@@ -1374,6 +1406,7 @@ export default {
     if (!k) return;
     if (el.type === 'checkbox') S[k] = el.checked;
     else if (k === 'panicUrl') { const v = el.value.trim(); if (v && !isHttp(v)) { toast('Panic address must start with http(s)://', 'warn'); el.value = S.panicUrl; return; } S.panicUrl = v || DEFAULTS.panicUrl; }
+    else if (k === 'wisp') { let v = el.value.trim(); if (v && !/^wss?:\/\//i.test(v)) { toast('The Wisp server address must start with wss://', 'warn'); el.value = S.wisp; return; } if (v && !v.endsWith('/')) v += '/'; S.wisp = v; el.value = S.wisp; wispP = null; }
     else if (k === 'hosted') { const v = el.value.trim(); if (v && !isHttp(v)) { toast('The hosted proxy address must start with http(s)://', 'warn'); el.value = S.hosted; return; } S.hosted = v; }
     else if (k === 'glass') S.glass = +el.value;
     else S[k] = el.value;
@@ -1599,24 +1632,14 @@ export default {
     save(); applyAll();
     toast('Searching with ' + SEARCH[S.search].name);
   });
-  $('#editTiles').addEventListener('click', () => {
-    const on = $('#tiles').classList.toggle('edit');
-    $('#editTiles').textContent = on ? 'Done' : 'Edit';
-  });
   $('#tiles').addEventListener('click', (e) => {
     const a = e.target.closest('.tile');
     if (!a) return;
     e.preventDefault();
-    if (e.target.closest('[data-rm]')) {
-      if (a.dataset.pin) { data.pinned = data.pinned.filter((x) => x.url !== a.dataset.url); save(); renderTiles(); return; }
-      const o = a.dataset.origin;
-      if (!data.hidden.includes(o)) data.hidden.push(o);
-      delete data.visits[o];
-      save(); renderTiles();
-      return;
-    }
-    if ($('#tiles').classList.contains('edit')) return;
-    if (e.ctrlKey || e.metaKey || e.shiftKey) openTab({ url: a.dataset.url }, { activate: false }); else navigate(tab(), { url: a.dataset.url });
+    const sc = SHORTCUTS[+a.dataset.i];
+    if (!sc) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) openTab({ url: sc.url }, { activate: false, ...(sc.mode ? { forceMode: sc.mode } : {}) });
+    else navigate(tab(), { url: sc.url }, sc.mode ? { forceMode: sc.mode } : {});
   });
 
   // Error view
@@ -1690,22 +1713,32 @@ export default {
   gearBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSettings(); });
 
   /* ═══════════════════════════ Sections (Browser / Games / Tools / Apps / Partners) ═══════════════════════════ */
-  const PAGES = ['browser', 'games', 'gba', 'cloud', 'tools', 'apps', 'partners', 'single'];
+  const PAGES = ['browser', 'games', 'gba', 'cloud', 'tools', 'apps', 'ai', 'partners', 'single'];
   let page = 'browser';
   const viewportEl = $('#viewport');
 
+  // Leaving a page unloads what it was running, so nothing keeps playing sound in the background.
+  const FRAME_PAGES = ['games', 'gba', 'ai'];
+  function unmountGames() { const f = $('#gFrame'); if (f) f.remove(); gamesCur = ''; clearTimeout(gamesTimer); }
+  function suspendTabs() { tabs.forEach((t) => { if (t.frame && t.frame.isConnected) { t.frame.remove(); t.susp = 1; } }); }
+  function resumeTab(t) { if (t && t.susp) { t.susp = 0; framesEl.appendChild(t.frame); } }
+
   function setPage(p) {
     if (!PAGES.includes(p)) p = 'browser';
+    const prev = page;
+    if (prev === 'browser' && p !== 'browser') suspendTabs();
+    if (FRAME_PAGES.includes(prev) && !FRAME_PAGES.includes(p)) unmountGames();
     page = p;
+    if (p === 'browser') resumeTab(tab());
     viewportEl.dataset.page = p;
     $$('#pagenav .pn').forEach((b) => b.setAttribute('aria-current', (b.dataset.page === p || (b.dataset.group || '').split(',').includes(p)) ? 'page' : 'false'));
     if (p !== 'tools') closeTool();
-    if (p === 'games' || p === 'gba') showGames(p);
+    if (FRAME_PAGES.includes(p)) showGames(p);
     else if (p === 'tools') renderTools();
     else if (p === 'apps') renderApps();
     else updateView();
-    const sc = $('#page-' + (p === 'gba' ? 'games' : (p === 'cloud' || p === 'single') ? 'soon' : p));
-    if (sc && p !== 'games' && p !== 'gba') sc.scrollTop = 0;
+    const sc = $('#page-' + (FRAME_PAGES.includes(p) ? 'games' : (p === 'cloud' || p === 'single') ? 'soon' : p));
+    if (sc && !FRAME_PAGES.includes(p)) sc.scrollTop = 0;
   }
   $('#pagenav').addEventListener('click', (e) => {
     const b = e.target.closest('.pn');
@@ -1735,6 +1768,7 @@ export default {
        which sidesteps X-Frame-Options / frame-ancestors if the host ever adds them.            */
   const GAMES_URL = 'https://levelzproxy.github.io/test/';
   const GBA_URL = 'https://gba-sfum.vercel.app/';
+  const AI_URL = 'https://waveyai.onrender.com/';
   const GAMES_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-pointer-lock allow-presentation';
   let gamesCur = '', gamesTimer = 0;
 
@@ -1765,8 +1799,8 @@ export default {
     } else f.src = gamesCur;
   }
   function showGames(p) {
-    const url = p === 'gba' ? GBA_URL : GAMES_URL;
-    $('#gTitle').textContent = p === 'gba' ? 'GBA games' : 'Games';
+    const url = p === 'gba' ? GBA_URL : p === 'ai' ? AI_URL : GAMES_URL;
+    $('#gTitle').textContent = p === 'gba' ? 'GBA games' : p === 'ai' ? 'Wavey AI' : 'Games';
     if (gamesCur !== url) { gamesCur = url; mountGames(false); }
   }
   $('#gReload').addEventListener('click', () => mountGames(false));
@@ -2272,36 +2306,7 @@ export default {
     } catch { return ''; }
   }
 
-  function openAddSite() {
-    openDlg(`<form id="asForm" novalidate>
-      <h2 id="dlgTitle">Add a site</h2>
-      <p class="sub">Pin a website to <b>Most visited</b>. Enter its address and, if you like, a name — then press Save.</p>
-      <label class="fld"><span>Site name <i>(optional)</i></span><input id="asName" type="text" maxlength="40" placeholder="e.g. YouTube" autocomplete="off"></label>
-      <label class="fld"><span>Website address</span><input id="asUrl" type="text" inputmode="url" placeholder="example.com" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-      <p class="err" id="asErr" role="alert"></p>
-      <div class="dlg-actions"><button type="button" class="btn" data-dlg="cancel">Cancel</button><button type="submit" class="btn primary">Save</button></div>
-    </form>`);
-    setTimeout(() => $('#asUrl').focus(), 60);
-  }
   dlgCard.addEventListener('click', (e) => { if (e.target.closest('[data-dlg="cancel"]')) closeDlg(); });
-  dlgCard.addEventListener('submit', (e) => {
-    if (e.target.id !== 'asForm') return;
-    e.preventDefault();
-    const url = normalizeSite($('#asUrl').value);
-    if (!url) { $('#asErr').textContent = 'Enter a valid website address, like example.com'; $('#asUrl').focus(); return; }
-    if (data.pinned.some((p) => p.url === url)) { $('#asErr').textContent = 'That site is already pinned.'; return; }
-    if (data.pinned.length >= 24) { $('#asErr').textContent = 'You can pin up to 24 sites.'; return; }
-    const name = $('#asName').value.trim() || hostOf(url);
-    data.pinned.push({ title: name.slice(0, 40), url });
-    data.hidden = data.hidden.filter((o) => o !== originOf(url));
-    save(); renderTiles(); closeDlg();
-    toast(`Added ${name}`);
-  });
-
-  $('#tiles').addEventListener('click', (e) => {
-    const add = e.target.closest('.tile.add');
-    if (add) { e.preventDefault(); e.stopImmediatePropagation(); if (!$('#tiles').classList.contains('edit')) openAddSite(); }
-  }, true);
 
   /* ═══════════════════════════ v1.02 — Users online ═══════════════════════════ */
   const onlineEl = $('#online'), onlineN = $('#onlineN'), onlineLbl = $('#onlineLbl');
@@ -2314,7 +2319,49 @@ export default {
     onlineEl.classList.toggle('live', !!live);
     onlineEl.title = live ? 'People on this site right now' : 'Live count unavailable — showing this device only';
   }
-  const presenceMode = () => (PRESENCE.firebaseDbUrl ? 'firebase' : PRESENCE.ntfyTopic ? 'ntfy' : 'off');
+  const presenceMode = () => (PRESENCE.firebaseDbUrl ? 'firebase' : (Array.isArray(PRESENCE.trackers) && PRESENCE.trackers.length && window.crypto && crypto.subtle) ? 'tracker' : PRESENCE.ntfyTopic ? 'ntfy' : 'off');
+
+  /* — Tracker presence: each visitor keeps one WebSocket open to public WebTorrent trackers under a shared "torrent" id.
+       The trackers count the live peers and tell us the total in every announce reply (complete + incomplete). — */
+  const wt = { hash: '', id: '', socks: [], alive: false };
+  const binStr = (u8) => { let r = ''; for (let i = 0; i < u8.length; i++) r += String.fromCharCode(u8[i]); return r; };
+  function wtShow() {
+    const v = wt.socks.filter((x) => x.ok).map((x) => x.n).sort((a, b) => a - b);
+    if (!v.length) return setOnline(1, false);
+    setOnline(v[(v.length - 1) >> 1], true);
+  }
+  function wtConnect(st) {
+    if (!wt.alive) return;
+    let ws;
+    try { ws = new WebSocket(st.url); } catch { return; }
+    st.ws = ws;
+    const announce = (first) => {
+      try { ws.send(JSON.stringify({ action: 'announce', info_hash: wt.hash, peer_id: wt.id, left: 1, uploaded: 0, downloaded: 0, numwant: 0, ...(first ? { event: 'started' } : {}) })); } catch { /* socket closing */ }
+    };
+    ws.onopen = () => { announce(true); clearInterval(st.beat); st.beat = setInterval(() => announce(false), 30000); };
+    ws.onmessage = (e) => {
+      try {
+        const m = JSON.parse(e.data);
+        if (m && m.action === 'announce' && typeof m.complete === 'number') { st.n = Math.max(1, (m.complete | 0) + (m.incomplete | 0)); st.ok = true; wtShow(); }
+      } catch { /* not for us */ }
+    };
+    const lost = () => {
+      clearInterval(st.beat); st.ok = false; wtShow();
+      if (st.ws === ws) { st.ws = null; if (wt.alive) st.retry = setTimeout(() => wtConnect(st), 45000); }
+    };
+    ws.onclose = lost; ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
+  }
+  async function wtStart() {
+    try {
+      wt.hash = binStr(new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode('wavey-chps-online:' + location.host))));
+      let id = ls.get('wavey.peer');
+      if (!id || id.length !== 20) { id = '-WV0100-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join(''); ls.set('wavey.peer', id); }
+      wt.id = id; wt.alive = true;
+      wt.socks = PRESENCE.trackers.filter((u) => /^wss:\/\//i.test(u)).slice(0, 5).map((url) => ({ url, ws: null, ok: false, n: 0, beat: 0, retry: 0 }));
+      wt.socks.forEach(wtConnect);
+      window.addEventListener('pagehide', () => { wt.alive = false; wt.socks.forEach((x) => { clearInterval(x.beat); clearTimeout(x.retry); try { x.ws && x.ws.close(); } catch { /* noop */ } }); });
+    } catch { setOnline(1, false); }
+  }
   const fbBase = () => PRESENCE.firebaseDbUrl.replace(/\/+$/, '');
   const NTFY = () => 'https://ntfy.sh/' + encodeURIComponent(PRESENCE.ntfyTopic);
   let lastBeat = 0, presTimer = 0;
@@ -2358,6 +2405,7 @@ export default {
   function startPresence() {
     setOnline(1, false);
     if (presenceMode() === 'off') return;
+    if (presenceMode() === 'tracker') { wtStart(); return; }
     presenceTick();
     document.addEventListener('visibilitychange', () => { if (!document.hidden) presenceTick(); });
     window.addEventListener('pagehide', () => {
@@ -2832,7 +2880,7 @@ export default {
   function preconnectRelays() {
     try {
       relayList('relay').slice(0, 4).forEach((r) => {
-        const o = originOf(relayUrl(r, 'https://example.com/'));
+        const o = r.wisp ? 'https://cdn.jsdelivr.net' : originOf(relayUrl(r, 'https://example.com/'));
         if (!o) return;
         const l = document.createElement('link');
         l.rel = 'preconnect'; l.href = o; l.crossOrigin = 'anonymous';
@@ -2870,7 +2918,7 @@ export default {
     window.addEventListener('beforeunload', () => { if (window.__wipe) return; data.session = tabs.map((t) => t.url || null); ls.set(KEY, JSON.stringify(data)); });
   }
 
-  if (window.__WAVEY_TEST__) window.__wavey = { A, setFx, applyAll, openAuth, openAddSite, presenceTick, handleBlank, testRelays, badReason, looksTruncated, decodeBody, resolveInput, prepareDocument, unwrapRedirect, relayUrl, relayList, fetchViaRelays, tabs, navigate, openTab, data, S, bridge };
+  if (window.__WAVEY_TEST__) window.__wavey = { wt, A, setFx, applyAll, openAuth, presenceTick, handleBlank, testRelays, badReason, looksTruncated, decodeBody, resolveInput, prepareDocument, unwrapRedirect, relayUrl, relayList, fetchViaRelays, tabs, navigate, openTab, data, S, bridge };
 
   init();
 })();
