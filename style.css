@@ -673,3 +673,9 @@ html.glow-on .bg .glow { opacity: 1; }
 .credit-h { margin: 18px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .auth-restore { display: block; margin: 8px auto 0; font-size: 11.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 .auth-restore:hover { color: var(--text); }
+
+/* ---------- v1.04: AI page, fixed shortcuts ---------- */
+.viewport[data-page='ai'] #page-games { display: flex; }
+.tiles { grid-template-columns: repeat(3, 1fr); }
+.tile .nm { white-space: normal; text-align: center; line-height: 1.25; }
+@media (max-width: 520px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
