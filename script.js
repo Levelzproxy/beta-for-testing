@@ -2151,7 +2151,7 @@ export default {
     ['Play', 'Newgrounds', 'https://www.newgrounds.com/games', 'Classic and new community games'],
     ['Movies & TV', 'dulo', 'https://dulo.mov/', 'Free movies and shows'],
     ['Movies & TV', 'hivex', 'https://hivex.stream/', 'Free movies and shows'],
-    ['Movies & TV', 'vuflix', 'https://vuflix.co/', 'Free movies and shows (Has ads so not recomended)'],
+    ['Movies & TV', 'screenscape', 'https://screenscape.me/', 'Free movies and shows'],
     ['Movies & TV', 'novera', 'https://novera.tv/', 'Free movies and shows'],
     ['Movies & TV', 'kofi', 'https://kofi.mov/', 'Free movies and shows'],
     ['Movies & TV', 'nxsha', 'https://web.nxsha.app/', 'Free movies and shows'],
