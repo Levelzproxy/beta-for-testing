@@ -42,16 +42,14 @@
   };
 
   // 4) "USERS ONLINE" counter near the top of the page. Nothing to set up.
-  //    Every visitor keeps a live connection open to free public WebTorrent trackers; the TRACKER SERVERS count the
-  //    open connections. There is no web address anybody can send a number to, so the count can't be faked by pasting
-  //    a link or editing a request — faking it means writing a custom WebSocket program. If several trackers answer,
-  //    the lower middle value is shown, so flooding one of them doesn't move the number.
-  //    • trackers      → the public trackers to ask (add/remove lines freely, they must start with wss://)
+  //    • ntfyTopic     → uses the free public ntfy.sh service (no sign-up). It works, but anyone who knows the topic could fake the number.
+  //                      Change ntfyTopic to any long random word so your count is only yours.
   //    • firebaseDbUrl → OPTIONAL, leave empty. Only if you ever set up your own Firebase database.
+  //    • trackers      → leave empty (the WebTorrent-tracker counter is switched off).
   const PRESENCE = {
-    trackers: ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev', 'wss://tracker.btorrent.xyz'],
+    trackers: [],
     firebaseDbUrl: '',
-    ntfyTopic: ''
+    ntfyTopic: 'wavey-chps-online-7f3k9x2q'
   };
 
   /* ═══════════════════════════ end of the editable block ═══════════════════════════ */
@@ -111,6 +109,7 @@
     { id: 'corsproxyorg', name: 'corsproxy.org',            tpl: 'https://corsproxy.org/?{enc}' },
     { id: 'euorg',        name: 'cors.eu.org',              tpl: 'https://cors.eu.org/{raw}' },
     { id: 'corslol',      name: 'cors.lol',                 tpl: 'https://api.cors.lol/?url={enc}' },
+    { id: 'corsfix',      name: 'Corsfix',                  tpl: 'https://proxy.corsfix.com/?{raw}' },
     { id: 'corsdev',      name: 'cors.dev',                 tpl: 'https://proxy.cors.dev/{raw}' },
     { id: 'x2u',          name: 'cors.x2u.in',              tpl: 'https://cors.x2u.in/{raw}' },
     { id: 'azm',          name: 'CORS Anywhere (Workers)',  tpl: 'https://cors-anywhere.azm.workers.dev/{raw}' },
@@ -213,7 +212,7 @@ export default {
   const DEFAULTS = {
     theme: 'violet', fx: 'constellation', glow: true, cursor: true, cA: '#a78bfa', cB: '#ec4899', cBg: '#0b0613', engine: 'relay', search: 'ddg', glass: 22, motion: true, restore: true,
     customRelay: '', disabledRelays: [], lastRelay: '', hosted: HOSTED_DEFAULT, hostedAuto: true,
-    wisp: '', cloakTitle: '', cloakIcon: '', panicKey: '`', panicUrl: 'https://www.wikipedia.org/'
+    wisp: 'wss://wisp.webmc.fun/', wispOff: false, cloakTitle: '', cloakIcon: '', panicKey: '`', panicUrl: 'https://www.wikipedia.org/'
   };
   const data = { settings: { ...DEFAULTS }, bookmarks: [], history: [], visits: {}, hidden: [], session: [], apps: [], pinned: [] };
   const S = data.settings;
@@ -224,6 +223,7 @@ export default {
       if (!raw) return;
       const d = JSON.parse(raw);
       Object.assign(S, d.settings || {});
+      if (!S.wisp && !S.wispOff) S.wisp = DEFAULTS.wisp;
       if (!THEMES[S.theme]) S.theme = 'violet';
       if (!SEARCH[S.search]) S.search = 'ddg';
       if (!['relay', 'direct', 'custom', 'hosted'].includes(S.engine)) S.engine = 'relay';
@@ -1210,7 +1210,7 @@ export default {
           <small>Paste as many as you like — one per line (they are tried first). Use <code>{enc}</code> or <code>{raw}</code> where the page address goes; if omitted, it is appended URL-encoded. See About for a 20-line Worker.</small></div>
         <div class="field"><div class="lbl">Wisp server</div>
           <input type="text" data-key="wisp" value="${esc(S.wisp)}" placeholder="wss://your-wisp-server.example/" spellcheck="false" aria-label="Wisp server address">
-          <small>Optional and off until you paste a server. It powers the “Wisp tunnel” relay: your browser connects to sites itself (end-to-end encrypted) through this server, so no CORS relay is needed. Must start with wss://. Use your own server — public demo servers ask not to be used by public sites.</small></div>
+          <small>Powers the “Wisp tunnel” relay: your browser connects to sites itself (end-to-end encrypted) through this server, so no CORS relay is needed. A public server is filled in for you; if it ever stops working, paste another one here (it must start with wss://). Leave the box empty to turn the tunnel off.</small></div>
         <div class="field"><div class="lbl">Hosted proxy</div>
           <input type="text" data-key="hosted" value="${esc(S.hosted)}" placeholder="https://your-proxy.example/" spellcheck="false" aria-label="Hosted proxy address">
           <small>Shown inside Wavey when the public relays fail. A bare address opens that proxy’s own page (Wavey copies the site address for you to paste). If you know its URL pattern, use <code>{enc}</code>, <code>{b64}</code>, <code>{uv}</code> or <code>{raw}</code> — e.g. <code>https://host/service/{uv}</code>. Whoever runs a hosted proxy can see what is loaded through it.</small></div>
@@ -1406,7 +1406,7 @@ export default {
     if (!k) return;
     if (el.type === 'checkbox') S[k] = el.checked;
     else if (k === 'panicUrl') { const v = el.value.trim(); if (v && !isHttp(v)) { toast('Panic address must start with http(s)://', 'warn'); el.value = S.panicUrl; return; } S.panicUrl = v || DEFAULTS.panicUrl; }
-    else if (k === 'wisp') { let v = el.value.trim(); if (v && !/^wss?:\/\//i.test(v)) { toast('The Wisp server address must start with wss://', 'warn'); el.value = S.wisp; return; } if (v && !v.endsWith('/')) v += '/'; S.wisp = v; el.value = S.wisp; wispP = null; }
+    else if (k === 'wisp') { let v = el.value.trim(); if (v && !/^wss?:\/\//i.test(v)) { toast('The Wisp server address must start with wss://', 'warn'); el.value = S.wisp; return; } if (v && !v.endsWith('/')) v += '/'; S.wisp = v; S.wispOff = !v; el.value = S.wisp; wispP = null; }
     else if (k === 'hosted') { const v = el.value.trim(); if (v && !isHttp(v)) { toast('The hosted proxy address must start with http(s)://', 'warn'); el.value = S.hosted; return; } S.hosted = v; }
     else if (k === 'glass') S.glass = +el.value;
     else S[k] = el.value;
