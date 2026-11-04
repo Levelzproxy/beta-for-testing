@@ -24,7 +24,19 @@
     { name: 'chps and Tobnyi',        role: 'Design / testing / ideas',           url: '' },
     { name: 'Tobnyi',                role: 'Meld — our partner',                 url: 'http://meld-gzpp.onrender.com/' },
     { name: 'Inter & Sora',          role: 'Fonts (Google Fonts)',               url: 'https://fonts.google.com/' },
-    { name: 'AllOrigins, corsproxy.io, cors.eu.org and friends', role: 'Free public relays that load pages', url: '' }
+    { name: 'AllOrigins, corsproxy.io, cors.eu.org and friends', role: 'Free public relays that load pages', url: '' },
+    { name: 'GBA Games', role: 'The GBA games page (gba-sfum.vercel.app)', url: 'https://gba-sfum.vercel.app/' }
+  ];
+  // Shown under the heading "Wisp tunnel" in the Credits frame (same format as above).
+  const CREDITS_WISP = [
+    { name: 'libcurl.js (ading2210)',   role: 'The WebAssembly library that powers the Wisp tunnel', url: 'https://github.com/ading2210/libcurl.js' },
+    { name: 'Mercury Workshop',         role: 'Wisp protocol and server software',                  url: 'https://github.com/MercuryWorkshop/wisp-protocol' },
+    { name: 'FreeWisp',                 role: 'Public Wisp server (wss://wisp.freewisp.org/)',      url: 'https://wisp.freewisp.org/' },
+    { name: 'Anura',                    role: 'Public Wisp server (wss://anura.pro/)',              url: 'https://anura.pro/' },
+    { name: 'Terbium',                  role: 'Public Wisp server (wss://wisp.terbiumon.top/wisp/)', url: 'https://github.com/TerbiumOS/webOS' },
+    { name: 'WebMC',                    role: 'Public Wisp server (wss://wisp.webmc.fun/)',         url: 'https://wisp.webmc.fun/' },
+    { name: 'Keystone (random-school-stuff)', role: 'Where the public Wisp server list was found',  url: 'https://github.com/random-school-stuff/keystone' },
+    { name: 'TCMs-Proxy (the-creative-master)', role: 'Where the WebMC Wisp server was found',      url: 'https://github.com/the-creative-master/TCMs-Proxy' }
   ];
   // Shown under the heading "Hosted proxies" in the Credits frame (same format as above).
   const CREDITS_PROXIES = [
@@ -212,7 +224,7 @@ export default {
   const DEFAULTS = {
     theme: 'violet', fx: 'constellation', glow: true, cursor: true, cA: '#a78bfa', cB: '#ec4899', cBg: '#0b0613', engine: 'relay', search: 'ddg', glass: 22, motion: true, restore: true,
     customRelay: '', disabledRelays: [], lastRelay: '', hosted: HOSTED_DEFAULT, hostedAuto: true,
-    wisp: 'wss://wisp.webmc.fun/', wispOff: false, cloakTitle: '', cloakIcon: '', panicKey: '`', panicUrl: 'https://www.wikipedia.org/'
+    wisp: '', wispOff: false, cloakTitle: '', cloakIcon: '', panicKey: '`', panicUrl: 'https://www.wikipedia.org/'
   };
   const data = { settings: { ...DEFAULTS }, bookmarks: [], history: [], visits: {}, hidden: [], session: [], apps: [], pinned: [] };
   const S = data.settings;
@@ -223,7 +235,7 @@ export default {
       if (!raw) return;
       const d = JSON.parse(raw);
       Object.assign(S, d.settings || {});
-      if (!S.wisp && !S.wispOff) S.wisp = DEFAULTS.wisp;
+      if (S.wisp === 'wss://wisp.webmc.fun/') S.wisp = ''; // older default → use the built-in list
       if (!THEMES[S.theme]) S.theme = 'violet';
       if (!SEARCH[S.search]) S.search = 'ddg';
       if (!['relay', 'direct', 'custom', 'hosted'].includes(S.engine)) S.engine = 'relay';
@@ -280,34 +292,82 @@ export default {
   }
 
   /* ═══════════════════════════ Relay engine ═══════════════════════════ */
-  /* Wisp tunnel (libcurl.js from jsDelivr, loaded the first time it is needed) */
-  const WISP_LIB = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7/libcurl.js';
-  const WISP_WASM = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7/libcurl.wasm';
-  let wispP = null, wispUrl = '';
+  /* Wisp tunnel (libcurl.js from jsDelivr, loaded the first time it is needed).
+     Several public Wisp servers are tried in turn; the one that answers is remembered, broken ones rest for 2 minutes. */
+  const WISP_DEFAULTS = ['wss://wisp.freewisp.org/', 'wss://anura.pro/', 'wss://wisp.terbiumon.top/wisp/', 'wss://wisp.webmc.fun/'];
+  const WISP_CDN = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.5/';
+  const WISP_TRY_MS = 5500;     // per server
+  let wispP = null, wispGood = '', wispCur = '', wispWhy = '', wispCool = {};
   const abortP = (sig) => new Promise((_, rej) => {
     const e = () => rej(new DOMException('Aborted', 'AbortError'));
     if (sig.aborted) e(); else sig.addEventListener('abort', e, { once: true });
   });
-  function loadWisp() {
-    if (wispP && wispUrl === S.wisp) return wispP;
-    wispUrl = S.wisp;
-    const mine = (wispP = new Promise((res, rej) => {
-      const go = async () => {
-        try { if (!window.libcurl.ready) await window.libcurl.load_wasm(WISP_WASM); window.libcurl.set_websocket(S.wisp); res(); } catch (e) { rej(e); }
-      };
-      if (window.libcurl) return go();
+  const failIn = (ms, msg) => new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
+  const wispServers = () => {
+    const mine = String(S.wisp || '').split(/[\s,]+/).filter((u) => /^wss?:\/\//i.test(u)).map((u) => (u.endsWith('/') ? u : u + '/'));
+    return mine.length ? mine : WISP_DEFAULTS;
+  };
+  function loadScript(src) {
+    return new Promise((res, rej) => {
       const sc = document.createElement('script');
-      sc.src = WISP_LIB; sc.async = true; sc.onload = go;
-      sc.onerror = () => rej(new Error('couldn’t load the tunnel library'));
+      sc.src = src; sc.async = true; sc.onload = res;
+      sc.onerror = () => { sc.remove(); rej(new Error('couldn’t download the tunnel library')); };
       document.head.appendChild(sc);
-    }));
+    });
+  }
+  function loadWisp() {
+    if (wispP) return wispP;
+    const mine = (wispP = (async () => {
+      if (window.libcurl && window.libcurl.ready) return;
+      let last;
+      // 1) the single-file build (WebAssembly inside)  2) the plain build + separate .wasm file
+      for (const L of [{ src: WISP_CDN + 'libcurl_full.js' }, { src: WISP_CDN + 'libcurl.js', wasm: WISP_CDN + 'libcurl.wasm' }]) {
+        try {
+          if (!window.libcurl) await loadScript(L.src);
+          if (!window.libcurl.ready) {
+            if (L.wasm) await Promise.race([window.libcurl.load_wasm(L.wasm), failIn(20000, 'the tunnel library took too long to start')]);
+            else {
+              try { await Promise.race([window.libcurl.load_wasm(), failIn(20000, 'the tunnel library took too long to start')]); }
+              catch (e) { if (!window.libcurl.ready) throw e; }
+            }
+          }
+          if (window.libcurl.ready !== false) return;
+        } catch (e) { last = e; }
+      }
+      throw last || new Error('the tunnel library didn’t start');
+    })());
     mine.catch(() => { if (wispP === mine) wispP = null; });
     return mine;
   }
   async function wispFetch(url, signal) {
-    if (!/^wss?:\/\//i.test(S.wisp || '')) throw new Error('no Wisp server set');
     await Promise.race([loadWisp(), abortP(signal)]);
-    return Promise.race([window.libcurl.fetch(url, { redirect: 'follow', headers: { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' } }), abortP(signal)]);
+    const now = Date.now();
+    let list = wispServers().filter((u) => !(wispCool[u] > now));
+    if (!list.length) { wispCool = {}; list = wispServers(); }
+    if (wispGood && list.includes(wispGood)) list = [wispGood, ...list.filter((u) => u !== wispGood)];
+    const errs = [];
+    for (const srv of list.slice(0, 3)) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      const ac = new AbortController();
+      const onAbort = () => ac.abort();
+      signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        if (wispCur !== srv) { window.libcurl.set_websocket(srv); wispCur = srv; }
+        const resp = await Promise.race([
+          window.libcurl.fetch(url, { signal: ac.signal, headers: { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' } }),
+          failIn(WISP_TRY_MS, 'no answer'), abortP(signal)
+        ]);
+        wispGood = srv; wispWhy = '';
+        return resp;
+      } catch (e) {
+        try { ac.abort(); } catch { /* noop */ }
+        if (signal.aborted) throw e;
+        wispCool[srv] = Date.now() + 120000;
+        errs.push(hostOf(srv) + ': ' + String((e && e.message) || e).slice(0, 80));
+      } finally { signal.removeEventListener('abort', onAbort); }
+    }
+    wispWhy = errs.join(' · ');
+    throw new Error(wispWhy || 'no Wisp server answered');
   }
 
   function relayUrl(r, url) {
@@ -348,7 +408,7 @@ export default {
     if (mode === 'custom') return custom;
     const now = Date.now();
     const key = (r) => { const h = health[r.id]; return [relayTier(r) + (h && h.cool > now ? 10 : 0), hscore(r) - (r.id === S.lastRelay ? 800 : 0)]; };
-    const builtin = RELAYS.filter((r) => !S.disabledRelays.includes(r.id) && !(r.wisp && !S.wisp)).map((r) => ({ r, k: key(r) }))
+    const builtin = RELAYS.filter((r) => !S.disabledRelays.includes(r.id) && !(r.wisp && S.wispOff)).map((r) => ({ r, k: key(r) }))
       .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1]).map((x) => x.r);
     return [...custom, ...builtin];
   }
@@ -1209,8 +1269,9 @@ export default {
           <textarea data-key="customRelay" spellcheck="false" placeholder="https://my-relay.workers.dev/?url=">${esc(S.customRelay)}</textarea>
           <small>Paste as many as you like — one per line (they are tried first). Use <code>{enc}</code> or <code>{raw}</code> where the page address goes; if omitted, it is appended URL-encoded. See About for a 20-line Worker.</small></div>
         <div class="field"><div class="lbl">Wisp server</div>
-          <input type="text" data-key="wisp" value="${esc(S.wisp)}" placeholder="wss://your-wisp-server.example/" spellcheck="false" aria-label="Wisp server address">
-          <small>Powers the “Wisp tunnel” relay: your browser connects to sites itself (end-to-end encrypted) through this server, so no CORS relay is needed. A public server is filled in for you; if it ever stops working, paste another one here (it must start with wss://). Leave the box empty to turn the tunnel off.</small></div>
+          <input type="text" data-key="wisp" value="${esc(S.wisp)}" placeholder="Built-in list of public servers (leave empty)" spellcheck="false" aria-label="Wisp server address">
+          <small>Powers the “Wisp tunnel” relay: your browser connects to sites itself (end-to-end encrypted) through a Wisp server, so no CORS relay is needed. Several public servers are built in and tried in turn. To use your own, paste one or more <code>wss://</code> addresses here (separated by spaces).</small></div>
+        ${sw('wispOff', 'Turn the Wisp tunnel off', 'Never use the Wisp tunnel.', S.wispOff)}
         <div class="field"><div class="lbl">Hosted proxy</div>
           <input type="text" data-key="hosted" value="${esc(S.hosted)}" placeholder="https://your-proxy.example/" spellcheck="false" aria-label="Hosted proxy address">
           <small>Shown inside Wavey when the public relays fail. A bare address opens that proxy’s own page (Wavey copies the site address for you to paste). If you know its URL pattern, use <code>{enc}</code>, <code>{b64}</code>, <code>{uv}</code> or <code>{raw}</code> — e.g. <code>https://host/service/{uv}</code>. Whoever runs a hosted proxy can see what is loaded through it.</small></div>
@@ -1280,13 +1341,13 @@ export default {
     btns.forEach((b) => { b.disabled = true; b.textContent = 'Testing…'; });
     $$('[data-rs]').forEach((el) => { el.className = 'rstat'; el.textContent = '…'; });
     const t00 = performance.now();
-    let okN = 0, best = null;
+    let okN = 0, best = null, wispTestWhy = '';
     await Promise.all(list.map(async (r) => {
       const els = $$(`[data-rs="${r.id}"]`);
       const set = (cls, txt) => els.forEach((el) => { el.className = 'rstat ' + cls; el.textContent = txt; });
-      if (r.wisp && !S.wisp) { set('', 'off'); return; }
+      if (r.wisp && S.wispOff) { set('', 'off'); return; }
       const t0 = performance.now(), c = new AbortController();
-      const to = setTimeout(() => c.abort(), r.wisp ? 12000 : r.rendered || r.archive ? 6000 : 3500);
+      const to = setTimeout(() => c.abort(), r.wisp ? 17000 : r.rendered || r.archive ? 6000 : 3500);
       try {
         const resp = r.wisp ? await wispFetch('https://example.com/', c.signal) : await fetch(relayUrl(r, 'https://example.com/'), { signal: c.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', headers: r.headers || {} });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1300,12 +1361,13 @@ export default {
       } catch (e) {
         hrec(r, false);
         set('bad', e.name === 'AbortError' ? '✕ timeout' : '✕ failed');
+        if (r.wisp) { const why = wispWhy || e.message || ''; els.forEach((el) => { el.title = why; }); wispTestWhy = why; }
       } finally { clearTimeout(to); }
     }));
     testing = false;
     btns.forEach((b) => { b.disabled = false; b.textContent = 'Test all'; });
     const secs = ((performance.now() - t00) / 1000).toFixed(1);
-    toast(`${okN} of ${list.length} relays working in ${secs}s${best ? ' · fastest: ' + best.r.name + ' (' + best.ms + ' ms)' : ''}`, okN ? 'info' : 'warn', 4800);
+    toast(`${okN} of ${list.length} relays working in ${secs}s${best ? ' · fastest: ' + best.r.name + ' (' + best.ms + ' ms)' : ''}${wispTestWhy ? ' · Wisp tunnel: ' + wispTestWhy : ''}`, okN ? 'info' : 'warn', wispTestWhy ? 9000 : 4800);
   }
 
   async function copyText(txt) {
@@ -1406,7 +1468,7 @@ export default {
     if (!k) return;
     if (el.type === 'checkbox') S[k] = el.checked;
     else if (k === 'panicUrl') { const v = el.value.trim(); if (v && !isHttp(v)) { toast('Panic address must start with http(s)://', 'warn'); el.value = S.panicUrl; return; } S.panicUrl = v || DEFAULTS.panicUrl; }
-    else if (k === 'wisp') { let v = el.value.trim(); if (v && !/^wss?:\/\//i.test(v)) { toast('The Wisp server address must start with wss://', 'warn'); el.value = S.wisp; return; } if (v && !v.endsWith('/')) v += '/'; S.wisp = v; S.wispOff = !v; el.value = S.wisp; wispP = null; }
+    else if (k === 'wisp') { const v = el.value.split(/[\s,]+/).filter(Boolean); if (v.some((u) => !/^wss?:\/\//i.test(u))) { toast('Wisp server addresses must start with wss://', 'warn'); el.value = S.wisp; return; } S.wisp = v.join(' '); el.value = S.wisp; wispP = null; wispCur = ''; wispGood = ''; wispCool = {}; }
     else if (k === 'hosted') { const v = el.value.trim(); if (v && !isHttp(v)) { toast('The hosted proxy address must start with http(s)://', 'warn'); el.value = S.hosted; return; } S.hosted = v; }
     else if (k === 'glass') S.glass = +el.value;
     else S[k] = el.value;
@@ -2265,6 +2327,7 @@ export default {
       return `<div class="credit"><span class="av" style="background:${avatarBg(c.name)}">${esc((c.name[0] || '?').toUpperCase())}</span><div class="tx"><b>${nm}</b><small>${esc(c.role || '')}</small></div></div>`;
     }).join('');
     cBody.innerHTML = (CREDITS_INTRO ? `<p class="credit-intro">${esc(CREDITS_INTRO)}</p>` : '') + `<div class="credit-list">${mk(CREDITS) || '<div class="panel-empty">No credits yet.</div>'}</div>`
+      + (CREDITS_WISP.length ? `<h3 class="credit-h">Wisp tunnel</h3><div class="credit-list">${mk(CREDITS_WISP)}</div>` : '')
       + (CREDITS_PROXIES.length ? `<h3 class="credit-h">Hosted proxies</h3><div class="credit-list">${mk(CREDITS_PROXIES)}</div>` : '');
   }
   function toggleCredits(force) {
